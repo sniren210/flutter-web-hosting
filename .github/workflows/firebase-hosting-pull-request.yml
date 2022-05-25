@@ -2,16 +2,54 @@
 # https://github.com/firebase/firebase-tools
 
 name: Deploy to Firebase Hosting on PR
-'on': pull_request
+"on": pull_request
 jobs:
-  build_and_preview:
-    if: '${{ github.event.pull_request.head.repo.full_name == github.repository }}'
-    runs-on: ubuntu-latest
+  build_and_deploy:
+    runs-on: self-hosted
     steps:
+      - name: Install Java
+        uses: actions/setup-java@v1
+        with:
+          java-version: "12.x"
+
+      - name: Install Flutter
+        id: install
+        continue-on-error: true
+        uses: subosito/flutter-action@v1
+        with:
+          channel: "stable"
+
+      - name: Remove Flutter
+        if: steps.install.outcome=='failure'
+        run: rm -rf ${{ runner.tool_cache }}/flutter
+
+      - name: Retry Install Flutter
+        if: steps.install.outcome=='failure'
+        uses: subosito/flutter-action@v1
+        with:
+          channel: "stable"
+
+      - name: Flutter upgrade
+        run: |
+          flutter channel stable
+          flutter upgrade
+          flutter precache
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 14
+
       - uses: actions/checkout@v2
-      - run: npm ci && npm run build
+
+      - name: Run pub upgrade
+        run: flutter pub upgrade
+
+      - name: Build Web
+        run: flutter build web --web-renderer canvaskit
+
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_FLUTTER_HOSTING_WEB }}'
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_FLUTTER_HOSTING_WEB }}"
+          channelId: live
           projectId: flutter-hosting-web
